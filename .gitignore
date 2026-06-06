@@ -25,3 +25,7 @@ dist-ssr
 
 # Database
 kbs_auth.db
+
+# Commit & Changelog drafts
+NEXT_COMMIT.txt
+NEXT_CHANGELOG.md
