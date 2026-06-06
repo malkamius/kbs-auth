@@ -1,3 +1,14 @@
+try {
+  const fs = require('fs');
+  const path = require('path');
+  const envPath = path.resolve(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    process.loadEnvFile(envPath);
+  }
+} catch (e) {
+  console.warn('Could not load .env file via loadEnvFile:', e.message);
+}
+
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcryptjs');
@@ -10,7 +21,7 @@ const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
 app.set('trust proxy', 1);
-const PORT = process.env.BACKEND_PORT || process.env.PORT || 3000;
+const PORT = process.env.BACKEND_PORT || process.env.PORT || 29001;
 const JWT_SECRET = process.env.JWT_SECRET || 'kbs-cloud-sso-secret-key-12345';
 
 // Database Connection
@@ -80,6 +91,10 @@ app.use(cors({
       'http://localhost:8080', 'http://127.0.0.1:8080',
       'http://localhost:8081', 'http://127.0.0.1:8081',
       'http://localhost:8082', 'http://127.0.0.1:8082',
+      'http://localhost:19000', 'http://127.0.0.1:19000',
+      'http://localhost:19001', 'http://127.0.0.1:19001',
+      'http://localhost:19002', 'http://127.0.0.1:19002',
+      'http://localhost:19003', 'http://127.0.0.1:19003',
       'http://auth.kbs-cloud.com:8080',
       'http://starswarm.kbs-cloud.com:8081',
       'http://tickerclash.kbs-cloud.com:8082',
@@ -535,3 +550,37 @@ app.get('*splat', (req, res) => {
 app.listen(PORT, () => {
   console.log(`KBS-Auth service running on port ${PORT}`);
 });
+
+if (process.env.FRONTEND_PORT && String(process.env.FRONTEND_PORT) !== String(PORT)) {
+  const frontendApp = express();
+  const http = require('http');
+
+  // Proxy API requests to the backend server
+  frontendApp.all('/api/*splat', (req, res) => {
+    const connector = http.request({
+      host: 'localhost',
+      port: PORT,
+      path: req.originalUrl,
+      method: req.method,
+      headers: req.headers
+    }, (connectorRes) => {
+      res.writeHead(connectorRes.statusCode, connectorRes.headers);
+      connectorRes.pipe(res);
+    });
+
+    req.pipe(connector);
+
+    connector.on('error', (err) => {
+      console.error('Auth frontend proxy error:', err);
+      res.status(502).send('Bad Gateway');
+    });
+  });
+
+  frontendApp.use(express.static(path.join(__dirname, 'dist')));
+  frontendApp.get('*splat', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  });
+  frontendApp.listen(process.env.FRONTEND_PORT, () => {
+    console.log(`KBS-Auth static frontend server running on port ${process.env.FRONTEND_PORT}`);
+  });
+}
